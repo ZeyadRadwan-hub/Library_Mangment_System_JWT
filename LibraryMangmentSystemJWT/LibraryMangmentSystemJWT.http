@@ -1,0 +1,6 @@
+@LibraryMangmentSystemJWT_HostAddress = http://localhost:5142
+
+GET {{LibraryMangmentSystemJWT_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
