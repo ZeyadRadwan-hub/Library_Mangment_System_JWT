@@ -1,8 +1,8 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace LibraryMangmentSystemJWT.DTOs.Auth
+namespace LibraryMangmentSystemJWT.DTOs.UserDTO
 {
-    public class RegisterDto
+    public class LoginDto
     {
         [Required, MaxLength(100)]
         public string UserName { get; set; } = string.Empty;

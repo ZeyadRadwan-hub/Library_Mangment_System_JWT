@@ -1,127 +1,49 @@
-﻿using LibraryMangmentSystemJWT.DTOs.Auth;
-using LibraryMangmentSystemJWT.Model;
-using LibraryMangmentSystemJWT.Services;
-using LibraryMangmentSystemJWT.UnitOfWork;
+﻿using LibraryMangmentSystemJWT.DTOs.UserDTO;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-
-// Add the actual namespace that contains IUnitOfWork.
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 
 namespace LibraryMangmentSystemJWT.Controllers
 {
-    [Authorize]
-    [ApiController]
+    [AllowAnonymous]
     [Route("api/[controller]")]
+    [ApiController]
     public class AuthController : ControllerBase
     {
-        private readonly IUnitOfWork _unitOfWork;
-        private readonly IPasswordHasher<User> _passwordHasher;
-        private readonly IJwtTokenService _jwtTokenService;
-
-        public AuthController(
-            IUnitOfWork unitOfWork,
-            IPasswordHasher<User> passwordHasher,
-            IJwtTokenService jwtTokenService)
+        private readonly IConfiguration _configuration;
+        public AuthController(IConfiguration configuration) 
         {
-            _unitOfWork = unitOfWork;
-            _passwordHasher = passwordHasher;
-            _jwtTokenService = jwtTokenService;
+            _configuration = configuration;
         }
 
-        [AllowAnonymous]
-        [HttpPost("register")]
-        public async Task<IActionResult> Register(RegisterDto dto)
+        private string GeneratJwtToken(string Username)
         {
-            var userName = dto.UserName.Trim();
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["JWT:Key"]));
+            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
-            var existingUser =
-                await _unitOfWork.CustomUsers.GetByUserNameAsync(userName);
-
-            if (existingUser != null)
-            {
-                return Conflict(new
-                {
-                    message = "Username already exists."
-                });
-            }
-
-            var user = new User
-            {
-                UserName = userName,
-                Role = "Member"
-            };
-
-            user.PasswordHash = _passwordHasher.HashPassword(
-                user,
-                dto.Password);
-
-            _unitOfWork.Users.AddObject(user);
-
-            await _unitOfWork.SaveAsync();
-
-            return StatusCode(StatusCodes.Status201Created, new
-            {
-                user.Id,
-                user.UserName,
-                user.Role
-            });
+            var token = new JwtSecurityToken(
+                issuer: _configuration["JWT:Issuer"],
+                audience: _configuration["JWT:Audience"],
+                claims: new[] {new Claim(ClaimTypes.Name,Username)},
+                expires: DateTime.Now.AddMinutes(Convert.ToDouble(_configuration["JWT:ExpirationMinutes"])),
+                signingCredentials: creds
+            );
+            return new JwtSecurityTokenHandler().WriteToken(token);
         }
 
-        [AllowAnonymous]
-        [HttpPost("login")]
-        public async Task<IActionResult> Login(LoginDto dto)
+        [HttpPost("Login")]
+        public IActionResult Login([FromBody] LoginDto dto)
         {
-            var userName = dto.UserName.Trim();
-
-            var user =
-                await _unitOfWork.CustomUsers.GetByUserNameAsync(userName);
-
-            if (user == null)
+            if(dto.UserName!="test"||dto.Password!="password")
             {
-                return Unauthorized(new
-                {
-                    message = "Invalid username or password."
-                });
+                return Unauthorized();
             }
-
-            var verificationResult =
-                _passwordHasher.VerifyHashedPassword(
-                    user,
-                    user.PasswordHash,
-                    dto.Password);
-
-            if (verificationResult ==
-                PasswordVerificationResult.Failed)
-            {
-                return Unauthorized(new
-                {
-                    message = "Invalid username or password."
-                });
-            }
-
-            if (verificationResult ==
-                PasswordVerificationResult.SuccessRehashNeeded)
-            {
-                user.PasswordHash = _passwordHasher.HashPassword(
-                    user,
-                    dto.Password);
-
-                _unitOfWork.Users.UpdateObject(user);
-
-                await _unitOfWork.SaveAsync();
-            }
-
-            var (token, expiration) =
-                _jwtTokenService.GenerateToken(user);
-
-            var response = new LoginResponseDto
-            {
-                Token = token,
-                Expiration = expiration
-            };
-
-            return Ok(response);
+            var token = GeneratJwtToken(dto.UserName);
+            return Ok(new { token });
         }
     }
 }
